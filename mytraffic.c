@@ -36,9 +36,52 @@ static int irq_num;
 
 // handles the normal mode sequence
 // green stays on 3 cycles, then yellow 1 cycle, then red 2 cycles, repeat
+//ultimately a state machine. each time the timer fires (1s) this funct is called, and based on state,
+//we turn on the right LED and turn off others. We increment counter to track how many cycles
+//the current light has been on. when target cycles have been hit, we move to next state
 static void handle_normal_mode(void)
 {
     // TODO
+    //0 - green (on for 3cycles, then move to state 1/yellow)
+    if (state == 0) {
+        gpio_set_value(GPIO_GREEN, 1);
+        gpio_set_value(GPIO_YELLOW, 0);
+        gpio_set_value(GPIO_RED, 0);
+
+        counter++;
+        if (counter >= 3) {
+            state = 1; //move to yellow
+            counter = 0;
+        }
+    }
+
+    //1 - yellow (on for 1 cycle, then move to state 2/red)
+    else if (state == 1) {
+        gpio_set_value(GPIO_GREEN, 0);
+        gpio_set_value(GPIO_YELLOW, 1);
+        gpio_set_value(GPIO_RED, 0);
+
+        counter++;
+        if (counter >= 1) {
+            state = 2; //moves to red
+            counter = 0;
+        }
+    }
+
+    //2 - red (on for 2 cycles, then wrap back to state 0/green)
+    else if (state == 2) {
+        gpio_set_value(GPIO_GREEN, 0);
+        gpio_set_value(GPIO_YELLOW, 0);
+        gpio_set_value(GPIO_RED, 1);
+
+        counter++;
+        if (Counter >= 2) {
+            state = 0; //now wraps to green again
+            counter = 0;
+        }
+    }
+    
+
 }
 
 // handles flashing red mode
