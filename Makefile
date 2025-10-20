@@ -18,3 +18,5 @@ all:
 # removes all generated files
 clean:
 	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) -C $(KDIR) M=$(PWD) clean
+
+.PHONY: all clean
