@@ -3,7 +3,7 @@
 obj-m += mytraffic.o
 
 # path to ARM kernel source - adjust this to match workspace
-KDIR := $(HOME)/EC535/lab4/stock-linux-4.19.82-ti-rt-r33
+KDIR := $(HOME)/Desktop/EC535/Labs/Lab_4/stock-linux-4.19.82-ti-rt-r33
 
 # cross-compiler for ARM architecture
 CROSS_COMPILE := arm-linux-gnueabihf-

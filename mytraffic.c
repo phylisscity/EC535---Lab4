@@ -14,10 +14,11 @@ MODULE_LICENSE("GPL");
 #define GPIO_YELLOW 68
 #define GPIO_GREEN  44
 #define GPIO_BTN0   26
+#define GPIO_BTN1   46
 
 #define MAJOR_NUM 61
 
-static struct gpio_desc *led_red, *led_ye, *led_gr, *button_1, *button_2;
+static struct gpio_desc *led_red, *led_ye, *led_gr, *button_0, *button_1;
 
 // need to track which mode we're in
 // 0=normal, 1=flash-red, 2=flash-yellow
@@ -40,8 +41,6 @@ static int irq_num;
 //used to decide whether to turn off or on an Led when blinking
 static int red_state = 0;
 static int ye_state = 0;
-
-static int major;
 
 // handles the normal mode sequence
 // green stays on 3 cycles, then yellow 1 cycle, then red 2 cycles, repeat
@@ -163,81 +162,78 @@ static int __init traffic_init(void)
     // register char device with register_chrdev using MAJOR_NUM
     // setup timer with timer_setup and start it with mod_timer
 
-    major = register_chrdev(MAJOR_NUM, "mytraffic", 0644, NULL, &fops)
-    if(major < 0)
+    ret = register_chrdev(MAJOR_NUM, "mytraffic", &fops);
+    if(ret < 0)
     {
         printk(KERN_ALERT "Registering device failed\n");
-        return major;
+        return ret;
     }
 
-    led_red = gpio_to_desc(67);
+    led_red = gpio_to_desc(GPIO_RED);
     if(!led_red)
     {
-        printk(KERN_ALERT "Error acessing pin 67\n")
+      printk(KERN_ALERT "Error acessing pin 67\n");
         return -ENODEV;
     }
-    led_ye = gpio_to_desc(68);
+    led_ye = gpio_to_desc(GPIO_YELLOW);
     if(!led_ye)
     {
         printk(KERN_ALERT "Error acessing pin 68\n");
         return - ENODEV;
     }
-    led_gr = gpio_to_desc(44);
+    led_gr = gpio_to_desc(GPIO_GREEN);
     if(!led_gr)
     {
         printk(KERN_ALERT "Error acessing pin 44\n");
         return -ENODEV;
     }
-    button_1 = gpio_to_desc(26);
-    if(!button_1)
+    button_0 = gpio_to_desc(GPIO_BTN0);
+    if(!button_0)
     {
         printk(KERN_ALERT "Error acessing pin 26\n");
         return -ENODEV;
     }
-    button_2 = gpio_to_desc(46);
-    if(!button_2)
+    button_1 = gpio_to_desc(GPIO_BTN1);
+    if(!button_1)
     {
         printk(KERN_ALERT "Error acessing pin 46\n");
         return -ENODEV;
     }
 
-    status = gpiod_direction_output(led_red);
+    status = gpiod_direction_output(led_red, 0);
     if (status)
     {
         printk(KERN_ALERT "Error setting pin 67 to output\n");
         return status;
     }
 
-    status = gpiod_direction_output(led_ye);
+    status = gpiod_direction_output(led_ye, 0);
     if (status)
     {
         printk(KERN_ALERT "Error setting pin 68 to output\n");
         return status;
     }
 
-    status = gpiod_direction_output(led_gr);
+    status = gpiod_direction_output(led_gr, 0);
     if (status)
     {
         printk(KERN_ALERT "Error setting pin 44 to output");
         return status;
     }
 
-    status = gpiod_direction_input  (button_1)
+    status = gpiod_direction_input  (button_0);
     if (status)
     {
         printk(KERN_ALERT "Error setting pin 26 to input\n");
         return status;
     }
 
-    status = gpiod_direction_input(button_2);
+    status = gpiod_direction_input(button_1);
     {
         printk(KERN_ALERT "Error setting pin 46 to input\n");
+	return status;
     }
         
-    gpiod_set_value(led_red, 0);
-    gpiod_set_value(led_ye, 0);
-    gpiod_set_value(led_gr, 0);
-
     red_state = 1;
     ye_state = 1;
     
@@ -256,17 +252,19 @@ static void __exit traffic_exit(void)
     // free GPIOs with gpio_free for each pin
     // unregister char device with unregister_chrdev
 
-    delt_timer(traffic_timer);
+    del_timer(&traffic_timer);
 
     gpiod_set_value(led_red, 0);
     gpiod_set_value(led_ye, 0);
     gpiod_set_value(led_gr, 0);
 
-    gpio_free(led_red);
-    gpio_free(led_ye);
-    gpio_free(led_gr);
-    gpio_free(button_1);
-    gpio_free(button_2);
+    gpio_free(GPIO_RED);
+    gpio_free(GPIO_YELLOW);
+    gpio_free(GPIO_GREEN);
+    gpio_free(GPIO_BTN0);
+    gpio_free(GPIO_BTN1);
+
+    unregister_chrdev(MAJOR_NUM, "mytraffic");
 
     
     printk(KERN_INFO "mytraffic: module unloaded\n");
