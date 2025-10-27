@@ -75,7 +75,7 @@ static void handle_normal_mode(void)
         gpio_set_value(GPIO_RED, 1);
 
         counter++;
-        if (Counter >= 2) {
+        if (counter >= 2) {
             state = 0; //now wraps to green again
             counter = 0;
         }
@@ -88,15 +88,28 @@ static void handle_normal_mode(void)
 // red LED toggles on/off each cycle
 static void handle_flash_red(void)
 {
-    // TODO
+    static int toggle = 0;  // keeps track of on/off state
+    
+    gpio_set_value(GPIO_RED, toggle);
+    gpio_set_value(GPIO_YELLOW, 0);
+    gpio_set_value(GPIO_GREEN, 0);
+    
+    toggle = !toggle;  // flip between 0 and 1
 }
 
 // handles flashing yellow mode
 // yellow LED toggles on/off each cycle
 static void handle_flash_yellow(void)
 {
-    // TODO
+     static int toggle = 0;
+    
+    gpio_set_value(GPIO_RED, 0);
+    gpio_set_value(GPIO_YELLOW, toggle);
+    gpio_set_value(GPIO_GREEN, 0);
+    
+    toggle = !toggle;
 }
+
 
 // timer callback - kernel calls this every cycle
 // figures out which mode we're in and calls the right handler
@@ -113,29 +126,73 @@ static void timer_callback(struct timer_list *t)
     mod_timer(&traffic_timer, jiffies + msecs_to_jiffies(1000));
 }
 
+
 // button interrupt handler - kernel calls this when BTN0 is pressed
 // need to cycle through modes and reset state when switching
 static irqreturn_t btn0_isr(int irq, void *dev_id)
 {
-    // TODO
+    // cycle through modes: 0 -> 1 -> 2 -> 0
+    current_mode = (current_mode + 1) % 3;
+    
+    // reset state and counter when switching modes
+    state = 0;
+    counter = 0;
+    
+    printk(KERN_INFO "mytraffic: switched to mode %d\n", current_mode);
+
     return IRQ_HANDLED;
 }
+
 
 // read function for /dev/mytraffic
 // userspace calls this when they cat /dev/mytraffic
 // need to build a string showing mode, cycle rate, and which LEDs are on
 static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 {
+    char status[256];
+    int status_len;
+    const char *mode_name;
+
     // to prevent looping forever
     if (*off > 0) return 0;
     
-    // TODO
-    // build status string showing mode name, cycle rate, LED status
-    // use copy_to_user to send it back
-    // update offset
+    // figure out mode name based on current_mode
+    if (current_mode == 0)
+        mode_name = "normal";
+    else if (current_mode == 1)
+        mode_name = "flashing-red";
+    else
+        mode_name = "flashing-yellow";
     
-    return 0;
+    // read current LED states
+    int red_val = gpio_get_value(GPIO_RED);
+    int yellow_val = gpio_get_value(GPIO_YELLOW);
+    int green_val = gpio_get_value(GPIO_GREEN);
+    
+    // build the status string
+    status_len = snprintf(status, sizeof(status),
+        "mode: %s\nrate: 1 Hz\nlights: red %s, yellow %s, green %s\n",
+        mode_name,
+        red_val ? "on" : "off",
+        yellow_val ? "on" : "off",
+        green_val ? "on" : "off"
+    );
+    
+    // make sure we don't overflow user's buffer
+    if (len < status_len)
+        status_len = len;
+    
+    // send to userspace
+    if (copy_to_user(buf, status, status_len))
+        return -EFAULT;
+    
+    // update offset so we don't loop
+    *off += status_len;
+    
+    return status_len;
 }
+
+
 
 // called when userspace opens /dev/mytraffic
 static int device_open(struct inode *i, struct file *f) 
@@ -157,19 +214,77 @@ static struct file_operations fops = {
     .read = device_read,
 };
 
+
 // module init - runs when we insmod mytraffic.ko
 // need to set up GPIOs, button interrupt, char device, and timer
 static int __init traffic_init(void)
 {
     int ret;
     
-    // TODO
-    // request GPIO pins using gpio_request for each pin
-    // set directions: gpio_direction_output for LEDs, gpio_direction_input for button
-    // get IRQ number with gpio_to_irq and store in irq_num
-    // request interrupt with request_irq
-    // register char device with register_chrdev using MAJOR_NUM
-    // setup timer with timer_setup and start it with mod_timer
+    // request GPIO pins
+    ret = gpio_request(GPIO_RED, "red_led");
+    if (ret) {
+        printk(KERN_ALERT "mytraffic: failed to request GPIO_RED\n");
+        return ret;
+    }
+    
+    ret = gpio_request(GPIO_YELLOW, "yellow_led");
+    if (ret) {
+        printk(KERN_ALERT "mytraffic: failed to request GPIO_YELLOW\n");
+        gpio_free(GPIO_RED);
+        return ret;
+    }
+    
+    ret = gpio_request(GPIO_GREEN, "green_led");
+    if (ret) {
+        printk(KERN_ALERT "mytraffic: failed to request GPIO_GREEN\n");
+        gpio_free(GPIO_RED);
+        gpio_free(GPIO_YELLOW);
+        return ret;
+    }
+    
+    ret = gpio_request(GPIO_BTN0, "btn0");
+    if (ret) {
+        printk(KERN_ALERT "mytraffic: failed to request GPIO_BTN0\n");
+        gpio_free(GPIO_RED);
+        gpio_free(GPIO_YELLOW);
+        gpio_free(GPIO_GREEN);
+        return ret;
+    }
+    
+    // set GPIO directions - LEDs as output (init to 0), button as input
+    gpio_direction_output(GPIO_RED, 0);
+    gpio_direction_output(GPIO_YELLOW, 0);
+    gpio_direction_output(GPIO_GREEN, 0);
+    gpio_direction_input(GPIO_BTN0);
+    
+    // get IRQ number and request interrupt
+    irq_num = gpio_to_irq(GPIO_BTN0);
+    ret = request_irq(irq_num, btn0_isr, IRQF_TRIGGER_FALLING, "mytraffic_btn0", NULL);
+    if (ret) {
+        printk(KERN_ALERT "mytraffic: failed to request IRQ\n");
+        gpio_free(GPIO_RED);
+        gpio_free(GPIO_YELLOW);
+        gpio_free(GPIO_GREEN);
+        gpio_free(GPIO_BTN0);
+        return ret;
+    }
+    
+    // register character device
+    ret = register_chrdev(MAJOR_NUM, "mytraffic", &fops);
+    if (ret < 0) {
+        printk(KERN_ALERT "mytraffic: failed to register char device\n");
+        free_irq(irq_num, NULL);
+        gpio_free(GPIO_RED);
+        gpio_free(GPIO_YELLOW);
+        gpio_free(GPIO_GREEN);
+        gpio_free(GPIO_BTN0);
+        return ret;
+    }
+    
+    // setup and start timer
+    timer_setup(&traffic_timer, timer_callback, 0);
+    mod_timer(&traffic_timer, jiffies + msecs_to_jiffies(1000));
     
     printk(KERN_INFO "mytraffic: module loaded\n");
     return 0;
@@ -179,12 +294,25 @@ static int __init traffic_init(void)
 // need to clean up everything to prevent kernel crashes
 static void __exit traffic_exit(void)
 {
-    // TODO
-    // stop timer with del_timer_sync
+    // stop timer
+    del_timer_sync(&traffic_timer);
+    
     // turn off all LEDs
-    // free interrupt with free_irq using irq_num
-    // free GPIOs with gpio_free for each pin
-    // unregister char device with unregister_chrdev
+    gpio_set_value(GPIO_RED, 0);
+    gpio_set_value(GPIO_YELLOW, 0);
+    gpio_set_value(GPIO_GREEN, 0);
+    
+    // free interrupt
+    free_irq(irq_num, NULL);
+    
+    // free GPIOs
+    gpio_free(GPIO_RED);
+    gpio_free(GPIO_YELLOW);
+    gpio_free(GPIO_GREEN);
+    gpio_free(GPIO_BTN0);
+    
+    // unregister char device
+    unregister_chrdev(MAJOR_NUM, "mytraffic");
     
     printk(KERN_INFO "mytraffic: module unloaded\n");
 }
