@@ -67,14 +67,15 @@ static void handle_normal_mode(void)
         gpio_set_value(GPIO_RED, 0);
 
         counter++;
-        if (pedestrain_call = 0 && counter >= 1) {
+        if ((pedestrain_call = 0) && (counter >= 1)) {
             state = 2; //moves to red
             counter = 0;
         }
-        else if(pedestrain_call = 1 && counter >= 1)
+        else if((pedestrain_call = 1) && (counter >= 1))
         {
-            state = 3 //moves to pedestrain call
-            counter = 0;
+	  state = 3; //moves to pedestrain call
+	  pedestrain_call = 0; //Turn off the pedestrain call
+          counter = 0;
         }
     }
 
@@ -337,11 +338,13 @@ static int __init traffic_init(void)
     ret = register_chrdev(MAJOR_NUM, "mytraffic", &fops);
     if (ret < 0) {
         printk(KERN_ALERT "mytraffic: failed to register char device\n");
-        free_irq(irq_num, NULL);
+        free_irq(irq_num_0, NULL);
+	free_irq(irq_num_1, NULL);
         gpio_free(GPIO_RED);
         gpio_free(GPIO_YELLOW);
         gpio_free(GPIO_GREEN);
         gpio_free(GPIO_BTN0);
+	gpio_free(GPIO_BTN1);
         return ret;
     }
     
