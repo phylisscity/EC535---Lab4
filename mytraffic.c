@@ -41,6 +41,12 @@ static int irq_num_1;
 
 static unsigned int cycle_speed = 1000; //the cycle speed in miliseconds
 
+//The write function needs to be able to copy from user to kernel
+static char *trafficBuf; //Buffer for the write function
+
+static unsigned capacity = 10; //size of buffer
+static int trafficBuf_len; //lenght of current message
+
 // handles the normal mode sequence
 // green stays on 3 cycles, then yellow 1 cycle, then red 2 cycles, repeat
 //ultimately a state machine. each time the timer fires (1s) this funct is called, and based on state,
@@ -235,68 +241,39 @@ static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t 
 
 static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t *off)
 {
-    char new_cycle = '1';
-    int new_cycle_len = sizeof(new_cycle);
+    char new_cycle[10], *nwptr = new_cycle;
+    char *endptr;
+    int new_cycle_len;
+    long temp;
 
-    if (*off > 0) return 0;
+    if (*off >= capacity) return 0;
 
-    if (len > new_cycle_len) //prevent reading more than one number
+    if (len > capacity - *off) //prevent reading more than one number
     {
-        len = new_cycle_len;
+        len = capacity - *off;
     }
 
-    if (len < new_cycle_len) // prevent buffer overflow
-        {new_cycle_len = len}
-
-    if (copy_from_user(new_cycle, buf, len))
+    if (copy_from_user(trafficBuf, buf, len))
     {
         return -EFAULT;
     }
 
-    switch (new_cycle) //change the cycle speed based on the char input from user
-    {
-    case '1':
-        cycle_speed = 1000;
-        break;
+    memcpy(&new_cycle, &trafficBuf, len);
+    new_cycle_len = sizeof(new_cycle);
+    endptr += new_cycle_len;
+    temp = simple_strtol(nwptr, &endptr, 10);
 
-    case '2':
-        cycle_speed = 1000/2;
-        break;
-
-    case '3':
-        cycle_speed = 1000/3;
-        break;
-    
-    case '4':
-        cycle_speed = 1000/4;
-        break;
-    
-    case '5':
-        cycle_speed = 1000/5;
-        break;
-    
-    case '6':
-        cycle_speed = 1000/6;
-        break;
-
-    case '7':
-        cycle_speed = 1000/7;
-        break;
-    
-    case '8':
-        cycle_speed = 1000/8;
-        break;
-    
-    case '9':
-        cycle_speed = 1000/9;
-        break;
-    
-    default:
-        printk(KERN_ALERT "Incorrect number");
-        break;
-    }
-
+    if (temp < 1)
+      {
+	printk(KERN_ALERT "Cannot set hz to 0");
+      }
+    else
+      {
+	cycle_speed = 1000/temp;
+      }
+      
     *off += new_cycle_len;
+    trafficBuf_len  = *off;
     return new_cycle_len;
 }
 
@@ -407,14 +384,31 @@ static int __init traffic_init(void)
     if (ret < 0) {
         printk(KERN_ALERT "mytraffic: failed to register char device\n");
         free_irq(irq_num_0, NULL);
-	    free_irq(irq_num_1, NULL);
+	free_irq(irq_num_1, NULL);
         gpio_free(GPIO_RED);
         gpio_free(GPIO_YELLOW);
         gpio_free(GPIO_GREEN);
         gpio_free(GPIO_BTN0);
-	    gpio_free(GPIO_BTN1);
+	gpio_free(GPIO_BTN1);
         return ret;
     }
+
+    //allocating buffer
+    trafficBuf = kmalloc(capacity, GFP_KERNEL);
+    if (trafficBuf)
+      {
+	printk(KERN_ALERT "Insufficient kernel memory\n");
+        free_irq(irq_num_0, NULL);
+	free_irq(irq_num_1, NULL);
+        gpio_free(GPIO_RED);
+        gpio_free(GPIO_YELLOW);
+        gpio_free(GPIO_GREEN);
+        gpio_free(GPIO_BTN0);
+	gpio_free(GPIO_BTN1);
+	return -ENOMEM;
+      }
+    memset(trafficBuf, 0, capacity);
+    trafficBuf_len = 0;
     
     // setup and start timer
     timer_setup(&traffic_timer, timer_callback, 0);
