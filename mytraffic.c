@@ -39,6 +39,8 @@ static int pedestrain_call = 0;
 static int irq_num_0;
 static int irq_num_1;
 
+static unsigned int cycle_speed = 1000; //the cycle speed in miliseconds
+
 // handles the normal mode sequence
 // green stays on 3 cycles, then yellow 1 cycle, then red 2 cycles, repeat
 //ultimately a state machine. each time the timer fires (1s) this funct is called, and based on state,
@@ -150,7 +152,7 @@ static void timer_callback(struct timer_list *t)
         handle_flash_yellow();
     
     // reschedule timer to fire again in 1 second
-    mod_timer(&traffic_timer, jiffies + msecs_to_jiffies(1000));
+    mod_timer(&traffic_timer, jiffies + msecs_to_jiffies(cycle_speed));
 }
 
 
@@ -231,7 +233,21 @@ static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t 
     return status_len;
 }
 
+static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t *off)
+{
+    int new_cycle = 1;
+    if (*off > 0) return 0;
 
+    if (copy_from_user(new_cycle, buf, len))
+    {
+        return -EFAULT;
+    }
+
+    cycle_speed = 1000/new_cycle;
+
+    *off += sizeof(new_cycle);
+    return sizeof(new_cycle);
+}
 
 // called when userspace opens /dev/mytraffic
 static int device_open(struct inode *i, struct file *f) 
@@ -251,6 +267,7 @@ static struct file_operations fops = {
     .open = device_open,
     .release = device_release,
     .read = device_read,
+    .write = device_write,
 };
 
 
@@ -339,18 +356,18 @@ static int __init traffic_init(void)
     if (ret < 0) {
         printk(KERN_ALERT "mytraffic: failed to register char device\n");
         free_irq(irq_num_0, NULL);
-	free_irq(irq_num_1, NULL);
+	    free_irq(irq_num_1, NULL);
         gpio_free(GPIO_RED);
         gpio_free(GPIO_YELLOW);
         gpio_free(GPIO_GREEN);
         gpio_free(GPIO_BTN0);
-	gpio_free(GPIO_BTN1);
+	    gpio_free(GPIO_BTN1);
         return ret;
     }
     
     // setup and start timer
     timer_setup(&traffic_timer, timer_callback, 0);
-    mod_timer(&traffic_timer, jiffies + msecs_to_jiffies(1000));
+    mod_timer(&traffic_timer, jiffies + msecs_to_jiffies(cycle_speed));
     
     printk(KERN_INFO "mytraffic: module loaded\n");
     return 0;
