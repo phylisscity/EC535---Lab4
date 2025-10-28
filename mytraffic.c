@@ -219,8 +219,8 @@ static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t 
     // build the status string
     status_len = snprintf(status, sizeof(status),
         "mode: %s\nrate: %d Hz\nlights: red %s, yellow %s, green %s\n",
-	1/(cycle_speed/1000),
         mode_name,
+        1/(cycle_speed/1000),
         red_val ? "on" : "off",
         yellow_val ? "on" : "off",
         green_val ? "on" : "off"
@@ -244,7 +244,9 @@ static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t
 {
     char new_cycle[10], *nwptr = new_cycle;
     int new_cycle_len;
-    long temp, *tmptr = temp;
+    long temp;
+    long *tmptr = &temp;
+    int res;
 
     if (*off >= capacity) return 0;
 
@@ -261,7 +263,15 @@ static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t
     memcpy(&new_cycle, &trafficBuf, len);
     new_cycle_len = sizeof(new_cycle);
 
-    kstrtol(nwptr, 10, tmptr);
+    res = kstrtol(nwptr, 10, tmptr);
+      if (res == -ERANGE)
+    {
+      return -ERANGE;
+    }
+      else if (res == -EINVAL)
+	{
+	  return -EINVAL;
+	}
 
     if (temp < 1)
       {
