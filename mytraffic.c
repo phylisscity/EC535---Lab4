@@ -79,7 +79,7 @@ static void handle_normal_mode(void)
             state = 2; //moves to red
             counter = 0;
         }
-        else if((pedestrain_call = 1) && (counter >= 1))
+        else if((pedestrain_call == 1) && (counter >= 1))
         {
 	  state = 3; //moves to pedestrain call
 	  pedestrain_call = 0; //Turn off the pedestrain call
@@ -218,7 +218,8 @@ static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t 
     
     // build the status string
     status_len = snprintf(status, sizeof(status),
-        "mode: %s\nrate: 1 Hz\nlights: red %s, yellow %s, green %s\n",
+        "mode: %s\nrate: %d Hz\nlights: red %s, yellow %s, green %s\n",
+	1/(cycle_speed/1000),
         mode_name,
         red_val ? "on" : "off",
         yellow_val ? "on" : "off",
@@ -395,7 +396,7 @@ static int __init traffic_init(void)
 
     //allocating buffer
     trafficBuf = kmalloc(capacity, GFP_KERNEL);
-    if (trafficBuf)
+    if (!trafficBuf)
       {
 	printk(KERN_ALERT "Insufficient kernel memory\n");
         free_irq(irq_num_0, NULL);
