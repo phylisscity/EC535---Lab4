@@ -243,9 +243,8 @@ static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t 
 static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t *off)
 {
     char new_cycle[10], *nwptr = new_cycle;
-    char *endptr;
     int new_cycle_len;
-    long temp;
+    long temp, *tmptr = temp;
 
     if (*off >= capacity) return 0;
 
@@ -261,8 +260,8 @@ static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t
 
     memcpy(&new_cycle, &trafficBuf, len);
     new_cycle_len = sizeof(new_cycle);
-    endptr += new_cycle_len;
-    temp = simple_strtol(nwptr, &endptr, 10);
+
+    kstrtol(nwptr, 10, tmptr);
 
     if (temp < 1)
       {
