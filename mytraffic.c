@@ -235,18 +235,69 @@ static ssize_t device_read(struct file *f, char __user *buf, size_t len, loff_t 
 
 static ssize_t device_write(struct file *f, char __user *buf, size_t len, loff_t *off)
 {
-    int new_cycle = 1;
+    char new_cycle = '1';
+    int new_cycle_len = sizeof(new_cycle);
+
     if (*off > 0) return 0;
+
+    if (len > new_cycle_len) //prevent reading more than one number
+    {
+        len = new_cycle_len;
+    }
+
+    if (len < new_cycle_len) // prevent buffer overflow
+        {new_cycle_len = len}
 
     if (copy_from_user(new_cycle, buf, len))
     {
         return -EFAULT;
     }
 
-    cycle_speed = 1000/new_cycle;
+    switch (new_cycle) //change the cycle speed based on the char input from user
+    {
+    case '1':
+        cycle_speed = 1000;
+        break;
 
-    *off += sizeof(new_cycle);
-    return sizeof(new_cycle);
+    case '2':
+        cycle_speed = 1000/2;
+        break;
+
+    case '3':
+        cycle_speed = 1000/3;
+        break;
+    
+    case '4':
+        cycle_speed = 1000/4;
+        break;
+    
+    case '5':
+        cycle_speed = 1000/5;
+        break;
+    
+    case '6':
+        cycle_speed = 1000/6;
+        break;
+
+    case '7':
+        cycle_speed = 1000/7;
+        break;
+    
+    case '8':
+        cycle_speed = 1000/8;
+        break;
+    
+    case '9':
+        cycle_speed = 1000/9;
+        break;
+    
+    default:
+        printk(KERN_ALERT "Incorrect number");
+        break;
+    }
+
+    *off += new_cycle_len;
+    return new_cycle_len;
 }
 
 // called when userspace opens /dev/mytraffic
